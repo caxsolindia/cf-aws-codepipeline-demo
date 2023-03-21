@@ -1,0 +1,38 @@
+Parameters:
+  BucketName:
+    Type: String
+    Description: Enter Bucket Name
+  Owner:
+    Type: String
+    Description: Enter Github Username 
+  Reponame:
+    Type: String
+    Description: Enter Repo Name 
+  Branch:
+    Type: String
+    Description: Enter Branch Name 
+  Token:
+    Type: String
+    Description: Enter Token 
+
+Resources:
+
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://cf-data-files-cicd.s3.ap-south-1.amazonaws.com/s3.yml
+      Parameters:
+        BucketName: !Ref BucketName
+      TimeoutInMinutes: 50
+
+  CodePipelineStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: S3Stack
+    Properties:
+      TemplateURL: !Sub https://cf-data-files-cicd.s3.ap-south-1.amazonaws.com/cicd.yml
+      Parameters:
+        Owner: !Ref Owner  
+        Reponame: !Ref Reponame
+        Branch: !Ref Branch
+        Token: !Ref Token
+      TimeoutInMinutes: 50

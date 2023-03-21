@@ -1,0 +1,193 @@
+Parameters:
+  Owner:
+    Type: String
+    Description: Enter Github Username 
+  Reponame:
+    Type: String
+    Description: Enter Repo Name 
+  Branch:
+    Type: String
+    Description: Enter Branch Name 
+  Token:
+    Type: String
+    Description: Enter Token 
+
+Resources:
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: "logs"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+                -
+                  Effect: "Allow"
+                  Action:
+                      - logs:CreateLogGroup
+                      - logs:CreateLogStream
+                      - logs:PutLogEvents
+                      - ecr:GetAuthorizationToken
+                      - ssm:GetParameters
+                  Resource: "*"
+        - PolicyName: "S3access"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+                -
+                  Effect: "Allow"
+                  Action:
+                      - s3:GetObject
+                      - s3:PutObject
+                      - s3:GetObjectVersion
+                  Resource: 
+                    Fn::Sub:
+                      - 'arn:aws:s3:::${BucketName}/*'
+                      - BucketName: !ImportValue BN  
+                    # !Sub arn:aws:s3:::${!ImportValue BN}/*
+                  
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: s3accesscodebuild
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource:
+                  - Fn::Sub:
+                    - 'arn:aws:s3:::${BucketName1}/*'
+                    - BucketName1: !ImportValue BN
+                  - Fn::Sub:
+                    - 'arn:aws:s3:::${BucketName2}'
+                    - BucketName2: !ImportValue BN
+
+                  # - !Sub arn:aws:s3:::${!ImportValue BN}/*
+                  # - !Sub arn:aws:s3:::${!ImportValue BN}
+                Effect: Allow
+                Action:
+                  - s3:*
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+                Effect: Allow
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:CreateDeploymentGroup
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: S3
+        Location: !ImportValue BN
+      Source:
+        Type: GITHUB
+        Location: https://github.com/ronaks9065/nodejs-pipeline-on-aws.git
+        GitCloneDepth: 1
+        BuildSpec: |
+          version: 0.2
+
+          phases:
+            install:
+              commands:
+                - echo "npm install"
+            build:
+              commands:
+                - echo "npm run build"
+          artifacts:
+            files:
+              - '**/*'
+            name: my-app
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:5.0
+        Type: LINUX_CONTAINER
+      Name: !Ref AWS::StackName
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  CodePipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !ImportValue BN
+      Name: MyPipeline
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: '1'
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                Owner: !Ref Owner
+                Repo:  !Ref Reponame
+                Branch: !Ref Branch
+                OAuthToken: !Ref Token
+
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: S3
+              InputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                BucketName: !ImportValue BN
+                Extract: 'true'
+      RestartExecutionOnUpdate: true
+
+  

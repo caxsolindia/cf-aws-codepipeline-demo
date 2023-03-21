@@ -1,0 +1,54 @@
+Parameters:
+  BucketName:
+    Type: String
+    Description: Enter Bucket Name
+
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      
+  MyBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MyBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource: 
+              - !Join ['', ['arn:aws:s3:::', !Ref MyBucket, '/*']]
+
+Outputs:
+  BucketName:
+    Value: !Ref MyBucket
+    Description: "Bucket Name"
+    Export:
+      Name: "BN"
+
+  # BucketName1:
+  #   Value: !Ref MyBucket
+  #   Description: "Bucket Name"
+  #   Export:
+  #     Name: "BN1"
+
+  # BucketName2:
+  #   Value: !Ref MyBucket
+  #   Description: "Bucket Name"
+  #   Export:
+  #     Name: "BN2"
+
+  PublicBucketURL:
+    Value: !Sub "${MyBucket}.s3-website.${AWS::Region}.amazonaws.com"
+    Description: "The public URL of the S3 bucket"
+    Export:
+      Name: "url"
